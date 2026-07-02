@@ -36,6 +36,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -79,6 +80,9 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+
+    // Impresora térmica ESC/POS (Bluetooth)
+    implementation(libs.escpos.thermalprinter.android)
 
     // Tests
     testImplementation(libs.junit)
