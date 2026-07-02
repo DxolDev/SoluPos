@@ -108,6 +108,15 @@ fun WebViewScreen(
                                     view?.evaluateJavascript(
                                         """
                                         window.print = function() { Android.print(); };
+                                        // El botón "Imprimir" del recibo de venta llama a
+                                        // print_receipt(), pero esa función NO existe en el sitio
+                                        // (bug propio del POS: lanza "print_receipt is not defined"
+                                        // y no imprime, también en el navegador). La definimos como
+                                        // puente hacia window.print() para que el botón funcione y
+                                        // pase por nuestra captura + previsualización.
+                                        if (typeof window.print_receipt !== 'function') {
+                                            window.print_receipt = function() { window.print(); };
+                                        }
                                         (function() {
                                             var opener = document.getElementById('open-left');
                                             var leftBar = document.querySelector('.left-bar');
