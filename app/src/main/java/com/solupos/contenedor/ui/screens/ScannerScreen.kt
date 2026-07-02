@@ -62,16 +62,25 @@ private fun CameraPreview(onBarcodeScanned: (String) -> Unit, onCancel: () -> Un
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var scanned by remember { mutableStateOf(false) }
+    val executor = remember { Executors.newSingleThreadExecutor() }
+    var boundProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            boundProvider?.unbindAll()
+            executor.shutdown()
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = { ctx ->
                 val previewView = PreviewView(ctx)
-                val executor = Executors.newSingleThreadExecutor()
                 val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
 
                 cameraProviderFuture.addListener({
                     val cameraProvider = cameraProviderFuture.get()
+                    boundProvider = cameraProvider
 
                     val preview = Preview.Builder().build().also {
                         it.setSurfaceProvider(previewView.surfaceProvider)

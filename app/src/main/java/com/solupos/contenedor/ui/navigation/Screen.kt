@@ -9,5 +9,5 @@ sealed class Screen(val route: String) {
     object WebView : Screen("webview/{storeId}") {
         fun createRoute(storeId: String) = "webview/$storeId"
     }
-    object Scanner : Screen("scanner")
+    object PrinterSettings : Screen("printerSettings")
 }
