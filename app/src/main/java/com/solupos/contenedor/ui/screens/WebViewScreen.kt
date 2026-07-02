@@ -2,6 +2,7 @@ package com.solupos.contenedor.ui.screens
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
 import android.os.Message
 import android.view.inputmethod.InputMethodManager
 import android.webkit.WebChromeClient
@@ -32,6 +33,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.solupos.contenedor.data.preferences.UserPreferences
 import com.solupos.contenedor.data.repository.StoreRepository
 import com.solupos.contenedor.printer.BluetoothPrinterManager
+import com.solupos.contenedor.ui.components.PrintPreviewDialog
 import com.solupos.contenedor.webview.BarcodeInjector
 import com.solupos.contenedor.webview.PosWebViewClient
 import com.solupos.contenedor.webview.PrintOutcome
@@ -54,6 +56,7 @@ fun WebViewScreen(
     var url by remember { mutableStateOf<String?>(null) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var showScanner by remember { mutableStateOf(false) }
+    var printPreview by remember { mutableStateOf<Pair<Bitmap, UserPreferences.PrinterConfig>?>(null) }
 
     LaunchedEffect(storeId) {
         url = repository.getById(storeId)?.url
@@ -94,7 +97,7 @@ fun WebViewScreen(
                                     webView = this,
                                     scope = coroutineScope,
                                     userPreferences = userPreferences,
-                                    printerManager = printerManager,
+                                    onPreview = { bmp, cfg -> printPreview = bmp to cfg },
                                     onResult = ::handlePrintOutcome
                                 ),
                                 "Android"
@@ -286,6 +289,25 @@ fun WebViewScreen(
                         onCancel = { showScanner = false }
                     )
                 }
+            }
+
+            printPreview?.let { (bitmap, config) ->
+                PrintPreviewDialog(
+                    bitmap = bitmap,
+                    onConfirm = {
+                        printPreview = null
+                        coroutineScope.launch {
+                            val result = printerManager.printBitmap(config, bitmap)
+                            handlePrintOutcome(
+                                result.fold(
+                                    { PrintOutcome.Success },
+                                    { PrintOutcome.Error(it.message ?: "Error desconocido") }
+                                )
+                            )
+                        }
+                    },
+                    onDismiss = { printPreview = null }
+                )
             }
         }
     }

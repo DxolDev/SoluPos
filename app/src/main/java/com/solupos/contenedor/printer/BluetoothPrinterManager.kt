@@ -72,7 +72,7 @@ class BluetoothPrinterManager {
                 val printer = EscPosPrinter(
                     connection,
                     DPI,
-                    config.paperWidthMm.toFloat(),
+                    printableMm(config.paperWidthMm),
                     charsPerLine(config.paperWidthMm)
                 )
                 try {
@@ -90,7 +90,18 @@ class BluetoothPrinterManager {
     private fun charsPerLine(widthMm: Int) = if (widthMm <= 58) 32 else 48
 
     companion object {
-        private const val DPI = 203
+        const val DPI = 203
         private const val CONNECT_TIMEOUT_MS = 8000L
+
+        /**
+         * Ancho imprimible REAL en puntos según el papel. El papel de 58mm no
+         * imprime 58mm sino ~48mm (384 puntos a 203dpi); el de 80mm imprime
+         * ~72mm (576 puntos). Usar el ancho del papel completo descuadra el
+         * centrado y desborda la imagen.
+         */
+        fun printableDots(paperWidthMm: Int) = if (paperWidthMm <= 58) 384 else 576
+
+        /** Milímetros equivalentes al ancho imprimible, para configurar DantSu. */
+        fun printableMm(paperWidthMm: Int) = printableDots(paperWidthMm) * 25.4f / DPI
     }
 }

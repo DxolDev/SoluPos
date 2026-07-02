@@ -36,6 +36,10 @@ class PrinterSettingsViewModel(
     private val _state = MutableStateFlow(PrinterSettingsUiState())
     val state: StateFlow<PrinterSettingsUiState> = _state.asStateFlow()
 
+    // Texto del ticket de prueba pendiente de confirmar en la previsualización.
+    private val _testPreview = MutableStateFlow<String?>(null)
+    val testPreview: StateFlow<String?> = _testPreview.asStateFlow()
+
     init {
         refreshBondedDevices()
         viewModelScope.launch {
@@ -75,11 +79,25 @@ class PrinterSettingsViewModel(
         }
     }
 
-    fun testPrint() {
+    /** Prepara la previsualización del ticket de prueba (no imprime todavía). */
+    fun requestTestPrint() {
+        viewModelScope.launch {
+            val config = userPreferences.printerConfig.first() ?: return@launch
+            _testPreview.value = buildTestTicketPreview(config)
+        }
+    }
+
+    /** Imprime el ticket de prueba tras confirmar la previsualización. */
+    fun confirmTestPrint() {
         viewModelScope.launch {
             val config = userPreferences.printerConfig.first() ?: return@launch
             printerManager.printTicket(config, loadLogoBitmap(), buildTestTicket(config))
+            _testPreview.value = null
         }
+    }
+
+    fun dismissTestPreview() {
+        _testPreview.value = null
     }
 
     private fun loadLogoBitmap(): Bitmap? =
@@ -106,6 +124,14 @@ class PrinterSettingsViewModel(
             appendLine("[L]")
         }
     }
+
+    /** Versión legible del ticket para la previsualización (sin etiquetas ESC/POS). */
+    private fun buildTestTicketPreview(config: UserPreferences.PrinterConfig): String =
+        buildTestTicket(config)
+            .replace(Regex("\\[[CLR]\\]"), "")
+            .replace("<b>", "")
+            .replace("</b>", "")
+            .trimEnd()
 
     private fun deviceName(device: BluetoothDevice): String =
         try {

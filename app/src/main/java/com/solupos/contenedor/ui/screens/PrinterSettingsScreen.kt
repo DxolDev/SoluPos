@@ -22,6 +22,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.solupos.contenedor.printer.PrinterConnectionState
+import com.solupos.contenedor.ui.components.PrintPreviewDialog
 import com.solupos.contenedor.viewmodel.PrinterSettingsViewModel
 
 @OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
@@ -31,6 +32,7 @@ fun PrinterSettingsScreen(
     onBack: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
+    val testPreview by viewModel.testPreview.collectAsState()
     val context = LocalContext.current
 
     val bluetoothPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -167,11 +169,19 @@ fun PrinterSettingsScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
             Button(
-                onClick = { viewModel.testPrint() },
+                onClick = { viewModel.requestTestPrint() },
                 enabled = state.selectedMac != null && state.connectionState !is PrinterConnectionState.Connecting
             ) {
                 Text("Imprimir prueba")
             }
+        }
+
+        testPreview?.let { preview ->
+            PrintPreviewDialog(
+                text = preview,
+                onConfirm = { viewModel.confirmTestPrint() },
+                onDismiss = { viewModel.dismissTestPreview() }
+            )
         }
     }
 }
