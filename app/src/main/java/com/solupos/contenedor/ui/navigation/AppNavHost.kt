@@ -21,13 +21,14 @@ fun AppNavHost() {
 
         composable(Screen.StoreList.route) {
             val viewModel: StoreListViewModel = viewModel(
-                factory = StoreListViewModelFactory(app.storeRepository)
+                factory = StoreListViewModelFactory(app.storeRepository, app.userPreferences)
             )
             StoreListScreen(
                 viewModel = viewModel,
                 onAddStore = { navController.navigate(Screen.StoreForm.createRoute()) },
                 onEditStore = { id -> navController.navigate(Screen.StoreForm.createRoute(id)) },
-                onOpenStore = { id -> navController.navigate(Screen.WebView.createRoute(id)) }
+                onOpenStore = { id -> navController.navigate(Screen.WebView.createRoute(id)) },
+                onOpenPrinterSettings = { navController.navigate(Screen.PrinterSettings.route) }
             )
         }
 
@@ -54,20 +55,20 @@ fun AppNavHost() {
             WebViewScreen(
                 storeId = storeId,
                 repository = app.storeRepository,
-                navController = navController,
-                onBack = { navController.popBackStack() }
+                userPreferences = app.userPreferences,
+                printerManager = app.printerManager,
+                onBack = { navController.popBackStack() },
+                onOpenPrinterSettings = { navController.navigate(Screen.PrinterSettings.route) }
             )
         }
 
-        composable(Screen.Scanner.route) {
-            ScannerScreen(
-                onBarcodeScanned = { barcode ->
-                    navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.set("barcode", barcode)
-                    navController.popBackStack()
-                },
-                onCancel = { navController.popBackStack() }
+        composable(Screen.PrinterSettings.route) {
+            val viewModel: PrinterSettingsViewModel = viewModel(
+                factory = PrinterSettingsViewModelFactory(app, app.userPreferences, app.printerManager)
+            )
+            PrinterSettingsScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() }
             )
         }
     }
