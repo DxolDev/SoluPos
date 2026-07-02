@@ -32,16 +32,59 @@ object ReceiptCapture {
     private const val DPI = 203
     private const val REFLOW_DELAY_MS = 350L
     private const val MAX_HEIGHT_PX = 8000
+    private const val BW_THRESHOLD = 180 // < = negro; el resto blanco. Sube grises tenues a negro.
 
     suspend fun capturePrintable(webView: WebView, paperWidthMm: Int): Bitmap? {
         runJs(webView, EMULATE_PRINT_JS)
-        delay(REFLOW_DELAY_MS) // deja que el WebView remaquete con el CSS de impresión
+        // Forzar el contenido a lo ancho del ticket para que se maquete angosto:
+        // así, al escalar a los puntos del papel, el texto no se reduce (o crece)
+        // y sale a buen tamaño en vez de diminuto.
+        runJs(webView, widthConstraintJs(paperCssPx(paperWidthMm)))
+        delay(REFLOW_DELAY_MS) // deja que el WebView remaquete
         val raw = drawFullContent(webView)
         runJs(webView, RESTORE_JS)
         if (raw == null) return null
         val trimmed = trimWhitespace(raw)
-        return scaleToPaperWidth(trimmed, paperWidthMm)
+        val scaled = scaleToPaperWidth(trimmed, paperWidthMm)
+        // Binarizar a blanco/negro puro: elimina los grises del render (que salían
+        // tenues en térmica) → texto negro sólido y nítido.
+        return binarize(scaled)
     }
+
+    private fun binarize(bitmap: Bitmap): Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        for (i in pixels.indices) {
+            val p = pixels[i]
+            val lum = (Color.red(p) * 299 + Color.green(p) * 587 + Color.blue(p) * 114) / 1000
+            pixels[i] = if (lum < BW_THRESHOLD) Color.BLACK else Color.WHITE
+        }
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        out.setPixels(pixels, 0, w, 0, 0, w, h)
+        return out
+    }
+
+    /**
+     * Ancho CSS al que se maqueta el recibo antes de capturar. Más angosto =
+     * texto más grande al escalar al ancho del papel. Afinado empíricamente.
+     */
+    private fun paperCssPx(paperWidthMm: Int): Int = if (paperWidthMm <= 58) 150 else 240
+
+    private fun widthConstraintJs(cssWidth: Int): String = """
+        (function() {
+            var s = document.getElementById('solupos-width');
+            if (!s) { s = document.createElement('style'); s.id = 'solupos-width'; document.head.appendChild(s); }
+            // width en html/body fija el ancho del ticket; max-width:100% en todo
+            // evita que el logo u otros elementos de ancho fijo se desborden y se
+            // corten; img height:auto mantiene la proporción del logo al escalar.
+            s.textContent = 'html,body{width:${cssWidth}px !important;min-width:0 !important;' +
+                'max-width:${cssWidth}px !important;margin:0 auto !important;}' +
+                '*{max-width:100% !important;box-sizing:border-box !important;}' +
+                'img{height:auto !important;}';
+        })();
+    """.trimIndent()
 
     private suspend fun runJs(webView: WebView, js: String) = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { cont ->
@@ -168,8 +211,10 @@ object ReceiptCapture {
 
     private val RESTORE_JS = """
         (function() {
-            var s = document.getElementById('solupos-print-emu');
-            if (s) s.remove();
+            ['solupos-print-emu', 'solupos-width'].forEach(function(id) {
+                var s = document.getElementById(id);
+                if (s) s.remove();
+            });
         })();
     """.trimIndent()
 }

@@ -37,8 +37,23 @@ class BluetoothPrinterManager {
 
     suspend fun printBitmap(config: UserPreferences.PrinterConfig, bitmap: Bitmap): Result<Unit> =
         withPrinter(config) { printer ->
-            val hex = PrinterTextParserImg.bitmapToHexadecimalString(printer, bitmap, true)
-            printer.printFormattedTextAndCut("[C]<img>$hex</img>\n")
+            // La PT-210 REDUCE (encoge) las imágenes altas: un recibo largo salía
+            // chico y centrado. Se corta el bitmap en franjas cortas y se imprime
+            // cada una por separado; así ninguna imagen es "alta" y cada franja
+            // sale a ancho completo, apilándose para formar el recibo entero.
+            // gradient=false → blanco y negro puro (texto negro sólido y nítido).
+            var y = 0
+            while (y < bitmap.height) {
+                val h = minOf(STRIP_HEIGHT_PX, bitmap.height - y)
+                val strip = Bitmap.createBitmap(bitmap, 0, y, bitmap.width, h)
+                val hex = PrinterTextParserImg.bitmapToHexadecimalString(printer, strip, false)
+                val cmd = "[C]<img>$hex</img>"
+                // Cortar en la última franja evita agregar líneas en blanco extra.
+                if (y + h >= bitmap.height) printer.printFormattedTextAndCut(cmd)
+                else printer.printFormattedText(cmd)
+                strip.recycle()
+                y += h
+            }
         }
 
     suspend fun printTicket(
@@ -92,6 +107,9 @@ class BluetoothPrinterManager {
     companion object {
         const val DPI = 203
         private const val CONNECT_TIMEOUT_MS = 8000L
+
+        /** Altura máx. de cada franja de imagen; corta para que la PT-210 no la reduzca. */
+        private const val STRIP_HEIGHT_PX = 128
 
         /**
          * Ancho imprimible REAL en puntos según el papel. El papel de 58mm no
