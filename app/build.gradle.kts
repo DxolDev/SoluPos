@@ -21,8 +21,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Se lee de variables de entorno para no versionar credenciales.
+        // Si no están definidas, no se crea la config y Android Studio pedirá
+        // la firma manualmente (los builds de debug no se ven afectados).
+        val ksPath = System.getenv("SOLUPOS_KEYSTORE_PATH")
+        if (ksPath != null) {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("SOLUPOS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SOLUPOS_KEY_ALIAS")
+                keyPassword = System.getenv("SOLUPOS_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

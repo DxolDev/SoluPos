@@ -3,8 +3,10 @@ package com.solupos.contenedor.ui.screens
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
+import android.net.http.SslError
 import android.os.Message
 import android.view.inputmethod.InputMethodManager
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -12,11 +14,15 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -24,16 +30,25 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.solupos.contenedor.data.preferences.UserPreferences
 import com.solupos.contenedor.data.repository.StoreRepository
 import com.solupos.contenedor.printer.BluetoothPrinterManager
 import com.solupos.contenedor.ui.components.PrintPreviewDialog
+import com.solupos.contenedor.ui.components.TutorialOverlay
+import com.solupos.contenedor.ui.components.TutorialStep
+import kotlinx.coroutines.flow.first
 import com.solupos.contenedor.webview.BarcodeInjector
 import com.solupos.contenedor.webview.PosWebViewClient
 import com.solupos.contenedor.webview.PrintOutcome
@@ -57,6 +72,18 @@ fun WebViewScreen(
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var showScanner by remember { mutableStateOf(false) }
     var printPreview by remember { mutableStateOf<Pair<Bitmap, UserPreferences.PrinterConfig>?>(null) }
+    var sslPrompt by remember { mutableStateOf<Pair<SslErrorHandler, SslError>?>(null) }
+    // El teclado tapa/eleva los botones flotantes; lo detectamos para ocultar el
+    // botón de "Mis tiendas" mientras se escribe (evita toques accidentales en venta).
+    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+    // Tutorial spotlight de los botones flotantes (primera vez que se abre una tienda).
+    var showTutorial by remember { mutableStateOf(false) }
+    var scannerBounds by remember { mutableStateOf<Rect?>(null) }
+    var storeBtnBounds by remember { mutableStateOf<Rect?>(null) }
+    LaunchedEffect(Unit) {
+        if (!userPreferences.hasSeenWebViewTutorial.first()) showTutorial = true
+    }
 
     LaunchedEffect(storeId) {
         url = repository.getById(storeId)?.url
@@ -84,6 +111,7 @@ fun WebViewScreen(
         }
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
@@ -102,7 +130,9 @@ fun WebViewScreen(
                                 ),
                                 "Android"
                             )
-                            webViewClient = object : PosWebViewClient() {
+                            webViewClient = object : PosWebViewClient(
+                                onSslError = { handler, error -> sslPrompt = handler to error }
+                            ) {
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     super.onPageFinished(view, url)
                                     view?.evaluateJavascript(
@@ -265,6 +295,23 @@ fun WebViewScreen(
                 )
             }
 
+            // Botón para volver a "Mis tiendas". Útil en móviles sin barra de
+            // navegación con flecha de atrás en pantalla. Se oculta mientras el
+            // teclado está abierto para que no lo toquen por accidente en una venta.
+            if (!showScanner && !imeVisible) {
+                FloatingActionButton(
+                    onClick = { onBack() },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = 16.dp, start = 16.dp)
+                        .onGloballyPositioned { storeBtnBounds = it.boundsInRoot() }
+                ) {
+                    Icon(Icons.Default.Storefront, contentDescription = "Volver a mis tiendas")
+                }
+            }
+
             if (!showScanner) {
                 FloatingActionButton(
                     onClick = {
@@ -279,6 +326,7 @@ fun WebViewScreen(
                         .align(Alignment.BottomEnd)
                         .imePadding()
                         .padding(bottom = 16.dp, end = 16.dp)
+                        .onGloballyPositioned { scannerBounds = it.boundsInRoot() }
                 ) {
                     Icon(Icons.Default.QrCodeScanner, contentDescription = "Escanear código")
                 }
@@ -318,6 +366,57 @@ fun WebViewScreen(
                     onDismiss = { printPreview = null }
                 )
             }
+
+            sslPrompt?.let { (handler, error) ->
+                AlertDialog(
+                    onDismissRequest = {
+                        handler.cancel()
+                        sslPrompt = null
+                    },
+                    title = { Text("Certificado no válido") },
+                    text = {
+                        Text(
+                            "No se pudo verificar el certificado de seguridad de:\n\n" +
+                                "${error.url}\n\n" +
+                                "Solo continúa si confías en este servidor."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            handler.proceed()
+                            sslPrompt = null
+                        }) { Text("Continuar") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            handler.cancel()
+                            sslPrompt = null
+                        }) { Text("Cancelar") }
+                    }
+                )
+            }
+        }
+    }
+
+        if (showTutorial && scannerBounds != null && storeBtnBounds != null) {
+            TutorialOverlay(
+                steps = listOf(
+                    TutorialStep(
+                        targetBounds = scannerBounds!!,
+                        title = "Escanea productos",
+                        description = "Toca este botón para escanear códigos de barras o QR con la cámara y agregarlos a la venta."
+                    ),
+                    TutorialStep(
+                        targetBounds = storeBtnBounds!!,
+                        title = "Volver a tus tiendas",
+                        description = "Toca este botón para regresar a la lista de tiendas en cualquier momento."
+                    )
+                ),
+                onFinish = {
+                    showTutorial = false
+                    coroutineScope.launch { userPreferences.markWebViewTutorialSeen() }
+                }
+            )
         }
     }
 }

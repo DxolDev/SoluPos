@@ -19,6 +19,7 @@ class UserPreferences(private val context: Context) {
     private val printerNameKey = stringPreferencesKey("printer_name")
     private val paperWidthMmKey = intPreferencesKey("paper_width_mm")
     private val hasSeenTutorialKey = booleanPreferencesKey("has_seen_tutorial")
+    private val hasSeenWebViewTutorialKey = booleanPreferencesKey("has_seen_webview_tutorial")
 
     val lastStoreId: Flow<String?> = context.dataStore.data.map { it[lastStoreIdKey] }
 
@@ -47,6 +48,17 @@ class UserPreferences(private val context: Context) {
 
     suspend fun markTutorialSeen() {
         context.dataStore.edit { it[hasSeenTutorialKey] = true }
+    }
+
+    val hasSeenWebViewTutorial: Flow<Boolean> =
+        context.dataStore.data.map { it[hasSeenWebViewTutorialKey] ?: false }
+
+    suspend fun markWebViewTutorialSeen() {
+        context.dataStore.edit { it[hasSeenWebViewTutorialKey] = true }
+    }
+
+    suspend fun resetWebViewTutorial() {
+        context.dataStore.edit { it[hasSeenWebViewTutorialKey] = false }
     }
 
     suspend fun clearPrinterConfig() {

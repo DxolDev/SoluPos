@@ -40,6 +40,8 @@ class StoreListViewModel(
 
     fun replayTutorial() {
         _showTutorial.value = true
+        // También reactiva el tutorial del POS para que reaparezca al abrir una tienda.
+        viewModelScope.launch { userPreferences.resetWebViewTutorial() }
     }
 
     fun deleteStore(store: StoreEntity) {
